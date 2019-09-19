@@ -101,8 +101,16 @@ class ModbusClient:
 
         if self.function_code.data == 0x0f:
             multi_write_mode = True
-            byte_count = bytearray(struct.pack('>B', 2))
-            register_data = bytearray(bytes.fromhex(hex(random.randrange(0, 0xffff)).replace('0x', '') * 2))
+            byte_value_length = int(self._data_count / 5)
+            if byte_value_length == 0:
+                byte_value_length = 1
+            byte_count = struct.pack('>B', byte_value_length)
+
+            register_data = bytearray()
+            for _ in range(0, byte_value_length):
+                random_byte = bytes.fromhex(hex(random.randrange(0, 65535)).replace('0x', ''))
+                register_data += bytearray(random_byte)
+            print("\t"*2 + "~~~~~~~Random Value Exploit~~~~~~~")
 
         elif self.function_code.data == 0x10:
             multi_write_mode = True
@@ -110,7 +118,7 @@ class ModbusClient:
             byte_count = bytearray(struct.pack('>B', self._data_count*2))
             # randomness value, 2 bytes equal 1 register value (there is 120 register value)
             register_data = bytearray(bytes.fromhex('1234567890abcdefaabbccddeeff1a1b1c1d1e1f'*12))[0:self._data_count*4]
-            # Combines data without header.
+            print()
         
         if multi_write_mode:
             pdata = unit_id + function_code + reference + data + byte_count + register_data
@@ -134,6 +142,8 @@ class ModbusClient:
         else:
             self.transaction_id.data = self.transaction_id.data + 1
           
-    def send(self):
-        self._socket_base.send(self.get_modbus_header())
+    def send(self, packet=None):
+        if packet is None:
+            packet = self.get_modbus_header()
+        self._socket_base.send(packet)
         self._next_trans_id()
