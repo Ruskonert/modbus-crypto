@@ -25,7 +25,7 @@ time.sleep(0.5)
 
 # receiving initialize public key
 data = s.recv(2048)
-ep.recv_public_data(data[2:])
+ep.recv_public_data(data[6:])
 time.sleep(0.5)
 
 # send the public key

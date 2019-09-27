@@ -87,8 +87,6 @@ class EncryptionPacket:
             self.other.send(EncryptionPacket.PACKET_MAGIC_CODE + fih + struct.pack(">B", mode) + hash_str_length + result_hash_array + key_array)
             if mode == 0:
                 print("Awaiting the received public key ...")
-            else:
-                print("Awaiting signal received the public key ...")
 
 class PacketMiddler:
     def __init__(self):
@@ -170,6 +168,7 @@ class PacketMiddler:
                     break
 
                 else:
+                    # function name print
                     function_name = 'Unknown'
                     if packet_data[4] == EncryptionPacket.FUNCTION_INITIALIZE_HANDSHAKE:
                         function_name = "Initialize handshake"
@@ -178,23 +177,28 @@ class PacketMiddler:
                     print("Function: {} [0x{:02X}]".format(function_name, packet_data[4]))
 
                     if packet_data[4] == EncryptionPacket.FUNCTION_INITIALIZE_HANDSHAKE:
+                        # Handshake established, But not yet sending the public key
                         if pm._communi == 0:
-                            e = EncryptionPacket(plc_device, other_device)
-                            pm._enc = e
-                            e.init_encryption_data()
+                            enc = EncryptionPacket(plc_device, other_device)
+                            pm._enc = enc
+                            # Send the initialize public key
+                            enc.init_encryption_data()
+                            pm._communi = pm._communi + 1
                         else:
-                            data = packet_data[4:]
-                            if data[0] != EncryptionPacket.FUNCTION_INITIALIZE_HANDSHAKE and data[1] != 0x00:
-                                PacketMiddler.force_disconnect(plc_device, other_device)
-                                break
-                            print("Received public key")
-                            result = e.recv_public_data(data[2:])
-                            if result == -1:
+                            # Receive the public key
+                            data = packet_data[5:]
+
+                            # Invalid mode!
+                            if data[1] != 0x01:
                                 PacketMiddler.force_disconnect(plc_device, other_device)
                                 break
                             else:
-                                e.send_complete_public_data()
-                                pm._communi = pm._communi + 1
+                                result = enc.recv_public_data(data[1:])
+                                print("Received public key")
+                            if result == -1:
+                                print("INVALID KEY! The hexdigest is not matched")
+                                PacketMiddler.force_disconnect(plc_device, other_device)
+                                break
                             
 
     @staticmethod
