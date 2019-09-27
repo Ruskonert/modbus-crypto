@@ -28,7 +28,7 @@ class EncryptionPacket:
         hash_value = data[1:hash_length+1]
         hash_str = str()
         for i in range(0, len(hash_value)):
-            hash += str(hex(hash_value[i]).replace("0x", ""))
+            hash_str += str(hex(hash_value[i]).replace("0x", ""))
 
         public_key_data = data[hash_length+1:]
         public_key = str()
