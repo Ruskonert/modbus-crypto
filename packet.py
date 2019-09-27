@@ -82,10 +82,9 @@ class EncryptionPacket:
                 hex_number = result_hash[i:i+2]
                 hex_number = '0x' + str(hex_number)
                 result_hash_array += struct.pack(">B", int(hex_number, base=16))
-
             fih = struct.pack(">B", EncryptionPacket.FUNCTION_INITIALIZE_HANDSHAKE)
             hash_str_length = struct.pack(">B", len(result_hash_array))
-            self.other.send(fih + struct.pack(">B", mode) + hash_str_length + result_hash_array + key_array)
+            self.other.send(EncryptionPacket.PACKET_MAGIC_CODE + fih + struct.pack(">B", mode) + hash_str_length + result_hash_array + key_array)
             if mode == 0:
                 print("Awaiting the received public key ...")
             else:
@@ -184,7 +183,7 @@ class PacketMiddler:
                             pm._enc = e
                             e.init_encryption_data()
                         else:
-                            data = other_device.recv(2048)
+                            data = packet_data[4:]
                             if data[0] != EncryptionPacket.FUNCTION_INITIALIZE_HANDSHAKE and data[1] != 0x00:
                                 PacketMiddler.force_disconnect(plc_device, other_device)
                                 break
