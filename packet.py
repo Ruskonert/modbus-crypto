@@ -23,6 +23,10 @@ class EncryptionPacket:
         self._user.generate_private_key()
         self._user.generate_public_key()
 
+    def send_complete_public_data(self):
+        data = bytearray(EncryptionPacket.PACKET_MAGIC_CODE) + struct.pack(">BB", EncryptionPacket.FUNCTION_INITIALIZE_HANDSHAKE, 0x1)
+        self.other.send(data)
+
     def recv_public_data(self, data):
         hash_length = data[0]
         hash_value = data[1:hash_length+1]
@@ -46,6 +50,7 @@ class EncryptionPacket:
         # Convert str to big-integer
         received_public_key = int(public_key)
         self._shared_key = self._user.generate_shared_secret(received_public_key, echo_return_key=True)
+        self.send_complete_public_data()
         return 0
 
 
@@ -180,14 +185,18 @@ class PacketMiddler:
                             e.init_encryption_data()
                         else:
                             data = other_device.recv(2048)
-                            if data[0] != EncryptionPacket.FUNCTION_INITIALIZE_HANDSHAKE and data[1] != 0x01:
+                            if data[0] != EncryptionPacket.FUNCTION_INITIALIZE_HANDSHAKE and data[1] != 0x00:
                                 PacketMiddler.force_disconnect(plc_device, other_device)
                                 break
                             print("Received public key")
                             result = e.recv_public_data(data[2:])
                             if result == -1:
                                 PacketMiddler.force_disconnect(plc_device, other_device)
-                            pm._communi = pm._communi + 1
+                                break
+                            else:
+                                e.send_complete_public_data()
+                                pm._communi = pm._communi + 1
+                            
 
     @staticmethod
     def force_disconnect(plc_device, other_device):
