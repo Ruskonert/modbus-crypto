@@ -3,28 +3,26 @@ import struct
 import threading
 import time
 import os
+import crypto
 import hashlib
 from diffiehellman.diffiehellman import DiffieHellman
 
 class EncryptionPacket:
     PACKET_MAGIC_CODE = struct.pack('>BBBB', 0x43, 0x52, 0x59, 0x54)
     FUNCTION_INITIALIZE_HANDSHAKE = 0x00
-    FUNCTION_INITIALIZE_VECTOR = 0x01
     FUNCTION_SECURE_COMMUNICATION = 0x02
 
     def __init__(self, device, other):
         self.device = device
         self.other = other
-        self._shared_key = None
         self._user = None
 
     def generate_key(self):
         self._user = DiffieHellman()
-        self._user.generate_private_key()
         self._user.generate_public_key()
 
     def send_complete_public_data(self):
-        data = bytearray(EncryptionPacket.PACKET_MAGIC_CODE) + struct.pack(">BB", EncryptionPacket.FUNCTION_INITIALIZE_HANDSHAKE, 0x1)
+        data = bytearray(EncryptionPacket.PACKET_MAGIC_CODE) + struct.pack(">BB", EncryptionPacket.FUNCTION_INITIALIZE_HANDSHAKE, 0x55)
         self.other.send(data)
 
     def recv_public_data(self, data):
@@ -32,8 +30,8 @@ class EncryptionPacket:
         hash_value = data[1:hash_length+1]
         hash_str = str()
         for i in range(0, len(hash_value)):
-            hash_str += str(hex(hash_value[i]).replace("0x", ""))
-
+            hash_str += '{:02x}'.format(int(hex(hash_value[i]), 16))
+        print("Digest: {}".format(hash_str))
         public_key_data = data[hash_length+1:]
         public_key = str()
         for i in range(0, len(public_key_data)):
@@ -43,14 +41,16 @@ class EncryptionPacket:
         m.update(public_key.encode('utf-8'))
         other_hash_value = m.hexdigest()
 
+        print("Calculated digest: {}".format(other_hash_value))
+
         # the public key is not matched
         if hash_str != other_hash_value:
             return -1
 
         # Convert str to big-integer
         received_public_key = int(public_key)
-        self._shared_key = self._user.generate_shared_secret(received_public_key, echo_return_key=True)
-        self.send_complete_public_data()
+        self._user.generate_shared_secret(received_public_key)
+        print("Shared key: {}".format(self._user.shared_key))
         return 0
 
 
@@ -70,8 +70,6 @@ class EncryptionPacket:
                 key_array += struct.pack(">B", int(hex_number, base=16))
     
             print("Generated public key -> len=[{}]".format(len(key_array)))
-            PacketMiddler.print_packet_data(key_array)
-            print()
             print("Sending the public key ...")
 
             m = hashlib.sha256()
@@ -172,11 +170,39 @@ class PacketMiddler:
                     function_name = 'Unknown'
                     if packet_data[4] == EncryptionPacket.FUNCTION_INITIALIZE_HANDSHAKE:
                         function_name = "Initialize handshake"
-                    elif packet_data[4]== EncryptionPacket.FUNCTION_INITIALIZE_VECTOR:
-                        function_name = "Initialize Vector"
+                    elif packet_data[4]== EncryptionPacket.FUNCTION_SECURE_COMMUNICATION:
+                        function_name = "Secure communiation"
                     print("Function: {} [0x{:02X}]".format(function_name, packet_data[4]))
 
-                    if packet_data[4] == EncryptionPacket.FUNCTION_INITIALIZE_HANDSHAKE:
+                    if packet_data[4] == EncryptionPacket.FUNCTION_SECURE_COMMUNICATION:
+                        if pm._communi < 2:
+                            print("~~~Error~~~ Handshake is not established, You need to connect first!")
+                            PacketMiddler.force_disconnect(plc_device, other_device)
+                            break
+                        else:
+                            start = time.time()
+                            data = packet_data[5:]
+                            print("Received encrypted data: ")
+                            PacketMiddler.print_packet_data(data)
+                            print()
+                            timestamp, dec_data = crypto.encrypt(pm._user.shared_key, data)
+                            if timestamp != pm._communi:
+                                print("~~~Error~~~ Checksum verification failed. It looks like a replay attack was attempted.")
+                            else:
+                                if dec_data is None:
+                                    print("~~~Error~~~ Failed to decrypt encrypted data. Is it correct encryption? ")
+                                else:
+                                    print("Retriving decrypted data: ")
+                                    PacketMiddler.print_packet_data(dec_data)
+                                    print()
+                                    plc_device.send(dec_data)
+                                    pm._communi = pm._communi + 1
+                                    end = time.time()
+                                    print("Elapsed time: {}ms".format(end - start))
+
+
+
+                    elif packet_data[4] == EncryptionPacket.FUNCTION_INITIALIZE_HANDSHAKE:
                         # Handshake established, But not yet sending the public key
                         if pm._communi == 0:
                             enc = EncryptionPacket(plc_device, other_device)
@@ -184,26 +210,30 @@ class PacketMiddler:
                             # Send the initialize public key
                             enc.init_encryption_data()
                             pm._communi = pm._communi + 1
-                        else:
+                        elif pm._communi == 1:
                             # Receive the public key
                             data = packet_data[5:]
-
                             # Invalid mode!
-                            if data[1] != 0x01:
+                            if data[0] == 0:
                                 PacketMiddler.force_disconnect(plc_device, other_device)
                                 break
                             else:
                                 result = enc.recv_public_data(data[1:])
-                                print("Received public key")
+                                print("Received public key!")
                             if result == -1:
-                                print("INVALID KEY! The hexdigest is not matched")
+                                print("~~~Error~~~ INVALID KEY! The hexdigest is not matched")
                                 PacketMiddler.force_disconnect(plc_device, other_device)
                                 break
-                            
+                            pm._communi = pm._communi + 1
+                        else:
+                            data = packet_data[5:]
+                            if data[0] == 0x55:
+                                print("Successful handshake established")
+                                pm._enc.send_complete_public_data()
 
     @staticmethod
     def force_disconnect(plc_device, other_device):
-        print("Handshake failed! Not match the function code, Connection Reset")
+        print("Handshake failed! Not match the function code or data invalid, Connection Reset")
         send_packet_data = bytearray(EncryptionPacket.PACKET_MAGIC_CODE) + struct.pack('>BB',0xee, 0xee)
         print("Retriving the respond data: {} byte(s)".format(len(send_packet_data)))
         print()
