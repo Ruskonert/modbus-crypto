@@ -33,7 +33,7 @@ class EncryptionPacket:
         public_key_data = data[hash_length+1:]
         public_key = str()
         for i in range(0, len(public_key_data)):
-            public_key += '{:02X}'.format(hex(public_key_data[i]))
+            public_key += '{:02X}'.format(int(hex(public_key_data[i]), 16))
 
         m = hashlib.sha256()
         m.update(public_key.encode('utf-8'))
