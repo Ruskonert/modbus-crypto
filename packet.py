@@ -46,6 +46,7 @@ class EncryptionPacket:
         # Convert str to big-integer
         received_public_key = int(public_key)
         self._shared_key = self._user.generate_shared_secret(received_public_key, echo_return_key=True)
+        return 0
 
 
 
@@ -183,7 +184,9 @@ class PacketMiddler:
                                 PacketMiddler.force_disconnect(plc_device, other_device)
                                 break
                             print("Received public key")
-                            e.recv_public_data(data[2:])
+                            result = e.recv_public_data(data[2:])
+                            if result == -1:
+                                PacketMiddler.force_disconnect(plc_device, other_device)
                             pm._communi = pm._communi + 1
 
     @staticmethod
@@ -195,7 +198,8 @@ class PacketMiddler:
         other_device.send(send_packet_data)
         other_device.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack('ii', 1, 0))
         other_device.close()
-        plc_device.close() 
+        if plc_device is not None:
+            plc_device.close() 
 
 
     def start_middle(self):
