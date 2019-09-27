@@ -27,9 +27,17 @@ class EncryptionPacket:
         hash_length = data[0]
         hash_value = data[1:hash_length+1]
 
+        public_key_data = data[hash_length+1:]
+        public_key = str()
+        for i in range(0, len(public_key_data)):
+            public_key += str(hex(public_key_data[i]).replace("0x", ""))
 
-        for i in range(hash_length+1, len(hash_value), 2):
-            pass
+        m = hashlib.sha256()
+        m.update(public_key.encode('utf-8'))
+        other_hash_value = m.hexdigest()
+        if hash_value != other_hash_value:
+            return -1
+        # Convert str to big-integer
 
 
     def init_encryption_data(self):
@@ -113,7 +121,7 @@ class PacketMiddler:
     def _recv_packet_data(pm, plc_device, other_device):
         if plc_device is None:
             raise ConnectionError("Not connected the sending device!")
-        
+
         if other_device is None:
             raise ConnectionError("Not connected the PLC device!")
 
@@ -163,6 +171,7 @@ class PacketMiddler:
                             if data[0] != EncryptionPacket.FUNCTION_INITIALIZE_HANDSHAKE and data[1] != 0x01:
                                 PacketMiddler.force_disconnect(plc_device, other_device)
                                 break
+                            print("Received public key")
                             e.recv_public_data(data[2:])
                             pm._communi = pm._communi + 1
 
