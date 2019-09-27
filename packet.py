@@ -26,6 +26,9 @@ class EncryptionPacket:
     def recv_public_data(self, data):
         hash_length = data[0]
         hash_value = data[1:hash_length+1]
+        hash_str = str()
+        for i in range(0, len(hash_value)):
+            hash += str(hex(hash_value[i]).replace("0x", ""))
 
         public_key_data = data[hash_length+1:]
         public_key = str()
@@ -35,13 +38,20 @@ class EncryptionPacket:
         m = hashlib.sha256()
         m.update(public_key.encode('utf-8'))
         other_hash_value = m.hexdigest()
-        if hash_value != other_hash_value:
+
+        # the public key is not matched
+        if hash_str != other_hash_value:
             return -1
+
         # Convert str to big-integer
+        received_public_key = int(public_key)
+        self._shared_key = self._user.generate_shared_secret(received_public_key, echo_return_key=True)
 
 
-    def init_encryption_data(self):
-        self.generate_key()
+
+    def init_encryption_data(self, generated=True, mode=0):
+        if generated:
+            self.generate_key()
         if self.other is None:
             raise ConnectionError("You need to connect the other deivce!")
         else:
@@ -69,10 +79,11 @@ class EncryptionPacket:
 
             fih = struct.pack(">B", EncryptionPacket.FUNCTION_INITIALIZE_HANDSHAKE)
             hash_str_length = struct.pack(">B", len(result_hash_array))
-            self.other.send(fih + struct.pack(">B", 0) + hash_str_length + result_hash_array + key_array)
-            print("Awaiting the received public key ...")
-
-
+            self.other.send(fih + struct.pack(">B", mode) + hash_str_length + result_hash_array + key_array)
+            if mode == 0:
+                print("Awaiting the received public key ...")
+            else:
+                print("Awaiting signal received the public key ...")
 
 class PacketMiddler:
     def __init__(self):
@@ -192,7 +203,7 @@ class PacketMiddler:
             raise ConnectionError("Not connected the sending device!")
         if self._recv is None:
             raise ConnectionError("Not connected the PLC device!")
-        self._recv_thread = threading.Thread(target=PacketMiddler._recv_packet_data, args=(self._recv, self._other))
+        self._recv_thread = threading.Thread(target=PacketMiddler._recv_packet_data, args=(self, self._recv, self._other))
         self._recv_thread.start()
         print("Started the packet data worker")
         while True:
