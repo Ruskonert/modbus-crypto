@@ -38,8 +38,3 @@ ep.send_complete_public_data()
 s.recv(1024)
 print("Successful handshake established")
 print("shared key -> {}".format(ep._user.shared_key))
-
-while True:
-    s.send(b"Hello world!")
-    time.sleep(1.2)
-

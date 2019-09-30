@@ -5,6 +5,7 @@ import time
 import os
 import crypto
 import hashlib
+
 from diffiehellman.diffiehellman import DiffieHellman
 
 class EncryptionPacket:
@@ -180,15 +181,14 @@ class PacketMiddler:
                             PacketMiddler.force_disconnect(plc_device, other_device)
                             break
                         else:
-                            start = time.time()
                             data = packet_data[5:]
                             print("Received encrypted data: ")
                             PacketMiddler.print_packet_data(data)
                             print()
-                            timestamp, dec_data = crypto.encrypt(pm._user.shared_key, data)
-                            if timestamp != pm._communi:
-                                print("~~~Error~~~ Checksum verification failed. It looks like a replay attack was attempted.")
-                            else:
+                            dec_data = crypto.decrypt(pm._enc._user.shared_key, data)
+                            #if timestamp != pm._communi:
+                            #    print("~~~Error~~~ Checksum verification failed. It looks like a replay attack was attempted.")
+                            if dec_data:
                                 if dec_data is None:
                                     print("~~~Error~~~ Failed to decrypt encrypted data. Is it correct encryption? ")
                                 else:
@@ -197,8 +197,9 @@ class PacketMiddler:
                                     print()
                                     plc_device.send(dec_data)
                                     pm._communi = pm._communi + 1
-                                    end = time.time()
-                                    print("Elapsed time: {}ms".format(end - start))
+                                    recv_data = plc_device.recv(1024)
+                                    other_device.send(recv_data)
+                                    
 
 
 

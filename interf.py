@@ -1,13 +1,51 @@
 import socket
 import os
-import modbus_socket
-import time
 import struct
+import packet
 import random
+import modbus_socket
 import sys
+import crypto
+import time
 
-host = '10.211.55.3'
-port = 502
+from diffiehellman.diffiehellman import DiffieHellman
+
+host = 'localhost'
+port = 501
+
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+sock.connect(('localhost', 501))
+
+data = 'CRYT'.encode('utf-8')
+
+dh = DiffieHellman()
+dh.generate_public_key()
+
+# Generate user
+ep = packet.EncryptionPacket(None, sock)
+ep._user = dh
+
+# Handshake
+sock.send(data + struct.pack(">B", 0x00))
+
+time.sleep(0.3)
+
+# receiving initialize public key
+data = sock.recv(2048)
+ep.recv_public_data(data[6:])
+time.sleep(0.3)
+
+# send the public key
+ep.init_encryption_data(False, 1)
+
+time.sleep(0.3)
+
+ep.send_complete_public_data()
+
+# receive the message (Received the public key is successful, just receive :D)
+sock.recv(1024)
+print("Successful handshake established")
+print("shared key -> {}".format(ep._user.shared_key))
 
 def print_header():
     os.system('clear')
@@ -16,9 +54,6 @@ def print_header():
     print('\t'*2 + 'Raw-based Modbus Client Tester (github.com/ruskonert)')
 
 def main():
-    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    result = sock.connect((host, port))
-
     client = modbus_socket.ModbusClient(sock)
     print('Connected server=[{}:{}]'.format(host, port))
 
@@ -79,30 +114,20 @@ def main():
                 rw = int(rw)
             client.set_rw_count(rw)
         elif number == 4:
-            print('\t'*2 +"Received encryption data, Need to decrypt")
-            fake_key = ''
-            for _ in range(0, 24):
-                fake_key += str(hex(random.randint(0, 255))).replace('0x', '\\x')
-            print('\t'*2 + 'key =>', fake_key)
-            print('\t'*2 +"Decrypting data")
-            print('\t'*2 +"Send to the decrypted data")
             start = time.time()
             v = bytes(client.get_modbus_header())
             print('\t'*2 + "Function => [{}]".format(hex(client.function_code.data)))
             print('\t'*2 + "Exploit  => " + str(v))
-            client.send(v)
-            recv_data = bytes(sock.recv(1024))
+            client.send(crypto.encrypt(dh.shared_key, 10, 32, v))
             end = time.time()
             print('\t'*2 + "Time elapsed: {}ms".format((end - start) * 1000 + 3.8))
-            print('\t'*2 + "Result   => " + str(recv_data))
-
             
-            if recv_data[-1] == 0x03:
-                print('\t'*2 + "Exception unexpected: Illegal data value")
-            elif recv_data[-1] == 0x01 and not client.function_code.data == 0x01:
-                print('\t'*2 + "Exception unexpected: Illegal function code")
-            else:
-                print('\t'*2 + "Successful.")
+            #if recv_data[-1] == 0x03:
+            #    print('\t'*2 + "Exception unexpected: Illegal data value")
+            #elif recv_data[-1] == 0x01 and not client.function_code.data == 0x01:
+            #    print('\t'*2 + "Exception unexpected: Illegal function code")
+            #else:
+            #    print('\t'*2 + "Successful.")
             
             print('\t'*2 + 'Please any key continue ...')
             input()
